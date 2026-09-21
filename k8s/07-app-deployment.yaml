@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-test
+  namespace: segundodesafio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app-test
+  template:
+    metadata:
+      labels:
+        app: app-test
+    spec:
+      containers:
+      - name: client
+        image: postgres:16-alpine
+        command: ["sh", "-c", "echo '[INFO] Testando DNS e conexao TCP com postgres-service na porta 5432...'; until nc -z -v -w5 postgres-service 5432; do echo '[AGUARDANDO] Postgres nao esta pronto ainda...'; sleep 2; done; echo '[SUCESSO] Conectividade TCP com o postgres-service estabelecida com sucesso!'; sleep 3600"]
+        env:
+        - name: PG_USER
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_USER
+        - name: PG_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_DB
+        - name: PG_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
