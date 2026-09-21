@@ -30,3 +30,11 @@ Print 3.0: Validação da criação do configmap/postgres-config, secret/postgre
 
 #### Reflexão: É apenas codificação, não criptografia. Qualquer pessoa com acesso ao kubectl get secret descodifica a string instantaneamente. Para a segurança real, isso significa que o Secret padrão do Kubernetes por si só não protege contra vazamentos de privilégio no cluster ou acesso indevido ao etcd em claro.
 
+## Nível 4 - A API conectada ao banco (a integração)
+![alt text](images/nivel4/print-4.0.png)
+Print 4.0: Print do terminal mostrando a linha [SUCESSO] Conectividade TCP com o postgres-service estabelecida com sucesso!
+
+![alt text](images/nivel4/print-4.1.png)
+Print 4.1: Comprovação da atualização do deployment do PostgREST, com validação de dados na tabela `tarefas` via `psql` e resposta HTTP JSON via Service DNS interno.
+
+#### Reflexão: Os IPs dos Pods são temporários e mudam sempre que o Pod reinicia. Usar um IP fixo causaria falha se o Pod do banco fosse recriado. O Service (postgres-service) funciona como um endereço DNS estável que encaminha o tráfego automaticamente para o IP atual do Pod ativo.
