@@ -38,3 +38,17 @@ Print 4.0: Print do terminal mostrando a linha [SUCESSO] Conectividade TCP com o
 Print 4.1: Comprovação da atualização do deployment do PostgREST, com validação de dados na tabela `tarefas` via `psql` e resposta HTTP JSON via Service DNS interno.
 
 #### Reflexão: Os IPs dos Pods são temporários e mudam sempre que o Pod reinicia. Usar um IP fixo causaria falha se o Pod do banco fosse recriado. O Service (postgres-service) funciona como um endereço DNS estável que encaminha o tráfego automaticamente para o IP atual do Pod ativo.
+
+## Nível 5 - Expor a API e provar a persistência
+![alt text](images/nivel5/print-5.0.png)
+![alt text](images/nivel5/print-5.1.png)
+Print 5.0 e 5.1: port-forward ativo na porta 3000 e pedido POST retornando HTTP/1.1 201 Created ao inserir "Dado crítico persistido Nivel 5".
+
+![alt text](images/nivel5/print-5.2.png)
+Print 5.2: Listagem confirmando os registos com IDs 1, 2, 3 e 4.
+
+![alt text](images/nivel5/print-5.3.png)
+![alt text](images/nivel5/print-5.4.png)
+Print 5.3 e 5.4: Remoção manual do Pod postgres-7649967d65-bg7tr e reconciliação automática pelo ReplicaSet gerando o novo Pod postgres-7649967d65-6568w em status Running. Consulta HTTP pós-recovery comprovando a integridade com payload intacto.
+
+#### Reflexão: Para esse dado sobreviver, tiveram que funcionar em conjunto ao menos 6 componentes (PVC/PV, storage, Replica/Deployment, Pod efêmero, Service/CoreDNS, Secret/ConfigMap e a API Postgres). Isso demonstra que o Kubernetes atua como um motor de estado desejado, protegendo a camada de persistência estática.
