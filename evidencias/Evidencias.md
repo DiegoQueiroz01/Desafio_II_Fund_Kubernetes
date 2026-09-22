@@ -60,3 +60,12 @@ Print 6.0 - Atualização do Deployment com `requests/limits`, `livenessProbe`/`
 Mapeamento de 3 IPs ativos e prontos para load-balancing round-robin no Service `postgrest-service`: `10.42.0.13:3000`, `10.42.0.14:3000`, `10.42.0.15:3000`.
 
 #### Reflexão: A diferença prática entre liveness e readiness reside na remediação: a livenessProbe valida se a aplicação está viva e reinicia o contêiner em caso de falha persistente, enquanto a readinessProbe valida se o contêiner está apto a aceitar tráfego, removendo o IP do Pod dos Endpoints do Service sem reiniciar o processo se falhar. Escalar a API estateless para várias réplicas é seguro porque cada instância processa pedidos de forma independente sem partilhar estado local, ao passo que escalar um banco relacional com o mesmo volume corromperia os dados, gerando conflitos de bloqueio de transação e quebra de integridade ACID por ausência de replicação clusterizada nativa.
+
+## Nível 7: Escalonamento automático
+![alt text](images/nivel7/print-7.0.png)
+Print 7.0: HPA a detetar saturação de CPU a 116%/50% e 122%/50%, elevando o target `Deployment/postgrest` de 3 para 5 réplicas.
+
+![alt text](images/nivel7/print-7.1.png)
+Print 7.1: Injeção do gerador de carga `load-gen` via BusyBox e reconciliação automática do Kubernetes instanciando novos pods `postgrest-5c8d4ddbf9-12bpr` e `j47m6` em estado `1/1 Running`.
+
+#### Reflexão: O HPA precisa de um ponto de referência para saber o que é "100% de uso". Sem ele, o cálculo de percentagem falha porque o Kubernetes não sabe qual é a capacidade base do contêiner.
