@@ -52,3 +52,11 @@ Print 5.2: Listagem confirmando os registos com IDs 1, 2, 3 e 4.
 Print 5.3 e 5.4: Remoção manual do Pod postgres-7649967d65-bg7tr e reconciliação automática pelo ReplicaSet gerando o novo Pod postgres-7649967d65-6568w em status Running. Consulta HTTP pós-recovery comprovando a integridade com payload intacto.
 
 #### Reflexão: Para esse dado sobreviver, tiveram que funcionar em conjunto ao menos 6 componentes (PVC/PV, storage, Replica/Deployment, Pod efêmero, Service/CoreDNS, Secret/ConfigMap e a API Postgres). Isso demonstra que o Kubernetes atua como um motor de estado desejado, protegendo a camada de persistência estática.
+
+## Nível 6: Health Checks e escala
+![alt text](images/nivel6/print-6.0.png)
+Print 6.0 - Atualização do Deployment com `requests/limits`, `livenessProbe`/`readinessProbe` e escalamento para 3 réplicas do `postgrest` em estado `1/1 Running`
+![alt text](images/nivel6/print-6.1.png)
+Mapeamento de 3 IPs ativos e prontos para load-balancing round-robin no Service `postgrest-service`: `10.42.0.13:3000`, `10.42.0.14:3000`, `10.42.0.15:3000`.
+
+#### Reflexão: A diferença prática entre liveness e readiness reside na remediação: a livenessProbe valida se a aplicação está viva e reinicia o contêiner em caso de falha persistente, enquanto a readinessProbe valida se o contêiner está apto a aceitar tráfego, removendo o IP do Pod dos Endpoints do Service sem reiniciar o processo se falhar. Escalar a API estateless para várias réplicas é seguro porque cada instância processa pedidos de forma independente sem partilhar estado local, ao passo que escalar um banco relacional com o mesmo volume corromperia os dados, gerando conflitos de bloqueio de transação e quebra de integridade ACID por ausência de replicação clusterizada nativa.
