@@ -1,13 +1,18 @@
 # Desafio II - Fundamentos de Kubernetes
 
 Implantacao local de uma API PostgREST integrada a PostgreSQL, com Namespace,
-ConfigMap, Secret, PVC, probes, requests/limits e HPA.
+ConfigMap, Secret, PVC, probes, requests/limits, HPA e papeis de banco com
+privilegios reduzidos para a API.
 
 ## Arquitetura
 
 - `postgres`: Deployment com uma replica e armazenamento persistente via PVC.
 - `postgres-service`: Service `ClusterIP` usado pelo PostgREST via DNS interno.
 - `postgrest`: API REST na porta 3000.
+- `web_anon`: papel sem login usado pela API, limitado a `SELECT` e `INSERT` em
+  `tarefas`.
+- `authenticator`: papel de conexao do PostgREST, sem privilegios diretos e
+  autorizado apenas a assumir o papel `web_anon`.
 - `postgrest-service`: acesso interno e alvo do `port-forward`.
 - `postgrest-hpa`: escala a API de 1 a 5 replicas conforme CPU.
 
@@ -34,12 +39,14 @@ kubectl top nodes
 O Secret real nao fica no Git. Gere-o no cluster usando uma senha local:
 
 ```bash
-export POSTGRES_PASSWORD='troque-por-uma-senha-local'
+export POSTGRES_PASSWORD='troque-por-uma-senha-admin-local'
+export AUTHENTICATOR_PASSWORD='troque-por-uma-senha-da-api'
 kubectl apply -f k8s/00-namespace.yml
 kubectl create secret generic postgres-secret \
   --namespace segundodesafio \
   --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-  --from-literal=uri="postgres://appuser:${POSTGRES_PASSWORD}@postgres-service:5432/appdb"
+  --from-literal=AUTHENTICATOR_PASSWORD="$AUTHENTICATOR_PASSWORD" \
+  --from-literal=uri="postgres://authenticator:${AUTHENTICATOR_PASSWORD}@postgres-service:5432/appdb"
 ```
 
 Aplique os recursos principais. O comando nao inclui o arquivo de exemplo do
@@ -57,9 +64,10 @@ kubectl rollout status deployment/postgres -n segundodesafio
 kubectl rollout status deployment/postgrest -n segundodesafio
 ```
 
-O script SQL em `06-postgres-init-config.yaml` cria a tabela `tarefas` apenas
-na inicializacao de um banco novo. Em um PVC ja existente, ele nao e executado
-novamente, conforme o comportamento da imagem oficial do PostgreSQL.
+O script de inicializacao em `06-postgres-init-config.yaml` cria a tabela
+`tarefas`, o papel `web_anon` e o papel `authenticator` apenas na inicializacao
+de um banco novo. Em um PVC ja existente, ele nao e executado novamente,
+conforme o comportamento da imagem oficial do PostgreSQL.
 
 ## Verificação
 
@@ -84,6 +92,13 @@ curl -X POST http://127.0.0.1:3000/tarefas \
   --data '{"titulo":"dado persistente","concluido":false}'
 ```
 
+A API anonima nao deve permitir alteracoes administrativas. Este teste deve
+retornar HTTP `405` ou `404`, conforme a versao do PostgREST:
+
+```bash
+curl -i -X DELETE 'http://127.0.0.1:3000/tarefas?id=eq.1'
+```
+
 ## Teste de persistencia
 
 Anote o resultado do POST, remova o Pod do banco e aguarde a recriacao:
@@ -97,6 +112,13 @@ curl http://127.0.0.1:3000/tarefas
 
 O registro criado antes da remocao deve continuar disponivel. O Deployment
 recria o Pod e o PVC remonta os dados persistidos.
+
+Para conferir os papeis e grants diretamente no banco:
+
+```bash
+kubectl exec -n segundodesafio deployment/postgres -- \
+  psql -U appuser -d appdb -c '\du' -c '\dp public.tarefas'
+```
 
 ## Teste do HPA
 

@@ -32,6 +32,11 @@ spec:
             secretKeyRef:
               name: postgres-secret
               key: POSTGRES_PASSWORD
+        - name: AUTHENTICATOR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: AUTHENTICATOR_PASSWORD
         ports:
         - containerPort: 5432
         resources:
@@ -44,9 +49,12 @@ spec:
         volumeMounts:
         - mountPath: /var/lib/postgresql/data
           name: postgres-storage
-        - mountPath: /docker-entrypoint-initdb.d/01-init.sql
+        - mountPath: /docker-entrypoint-initdb.d/01-init.sh
           name: postgres-init
-          subPath: 01-init.sql
+          subPath: 01-init.sh
+        - mountPath: /run/secrets/postgres
+          name: postgres-secret
+          readOnly: true
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
@@ -54,3 +62,7 @@ spec:
       - name: postgres-init
         configMap:
           name: postgres-init
+          defaultMode: 0755
+      - name: postgres-secret
+        secret:
+          secretName: postgres-secret
