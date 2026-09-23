@@ -15,3 +15,6 @@ kubeconfig
 *.pem
 *.key
 .env
+
+# Credenciais locais geradas para o cluster
+k8s/06-postgres-secret.yaml

@@ -24,9 +24,9 @@ spec:
               key: POSTGRES_USER
         - name: POSTGRES_DB
           valueFrom:
-           configMapKeyRef:
-             name: postgres-config
-             key: POSTGRES_DB
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_DB
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
@@ -34,10 +34,23 @@ spec:
               key: POSTGRES_PASSWORD
         ports:
         - containerPort: 5432
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
         volumeMounts:
         - mountPath: /var/lib/postgresql/data
           name: postgres-storage
+        - mountPath: /docker-entrypoint-initdb.d/01-init.sql
+          name: postgres-init
+          subPath: 01-init.sql
       volumes:
       - name: postgres-storage
         persistentVolumeClaim:
           claimName: postgres-pvc
+      - name: postgres-init
+        configMap:
+          name: postgres-init

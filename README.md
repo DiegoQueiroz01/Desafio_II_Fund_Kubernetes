@@ -1,154 +1,162 @@
 # Desafio II - Fundamentos de Kubernetes
 
-Este repositório contém a solução completa para o **Desafio II de Fundamentos de Kubernetes**. O projeto baseia-se na criação, configuração e orquestração de uma infraestrutura *multi-tier* (Base de Dados + API REST) num cluster Kubernetes local (K3s no Fedora Linux). 
+Implantacao local de uma API PostgREST integrada a PostgreSQL, com Namespace,
+ConfigMap, Secret, PVC, probes, requests/limits e HPA.
 
-Todo o desenvolvimento seguiu as melhores práticas de Infraestrutura como Código (IaC) e o fluxo de versionamento **GitFlow**.
+## Arquitetura
 
----
+- `postgres`: Deployment com uma replica e armazenamento persistente via PVC.
+- `postgres-service`: Service `ClusterIP` usado pelo PostgREST via DNS interno.
+- `postgrest`: API REST na porta 3000.
+- `postgrest-service`: acesso interno e alvo do `port-forward`.
+- `postgrest-hpa`: escala a API de 1 a 5 replicas conforme CPU.
 
-## Arquitetura do Projeto
+Todos os recursos ficam no namespace `segundodesafio`.
 
-A aplicação é composta por dois componentes principais a correr de forma isolada no namespace `segundodesafio`:
+## Pre-requisitos
 
-1. **PostgreSQL (Database - Stateful):** 
-   - Armazenamento persistente configurado via `PersistentVolumeClaim` (PVC), garantindo que os dados não sejam perdidos caso o Pod seja recriado.
-   - Comunicação interna ativada através de um `Service` do tipo ClusterIP.
+- Cluster local ativo: K3s, Rancher Desktop, Docker Desktop, Minikube ou Kind.
+- `kubectl` configurado para o cluster.
+- Metrics Server instalado para o HPA.
+- Uma StorageClass padrao no cluster. O PVC usa a StorageClass padrao, sem
+  depender de `hostPath` ou de um caminho especifico da maquina.
 
-2. **PostgREST (API REST - Stateless):** 
-   - API ligada dinamicamente à base de dados utilizando o DNS interno do Kubernetes.
-   - Configurações de ambiente separadas em `ConfigMaps` (dados não sensíveis) e `Secrets` (credenciais).
-   - Alta disponibilidade e resiliência garantidas via `livenessProbe` e `readinessProbe`.
-   - Limites de recursos (`requests` e `limits` de CPU/Memória) estabelecidos para evitar sobrecarga no cluster.
-   - Escalamento automático configurado via `HorizontalPodAutoscaler` (HPA).
+Verifique antes de iniciar:
 
----
-
-## Tecnologias e Recursos Utilizados
-
-- **Ambiente:** Fedora Linux, Kubernetes (K3s), `kubectl`.
-- **Contentores:** PostgreSQL (v13), PostgREST (v12.0.2).
-- **Recursos K8s Implementados:** 
-  - `Namespace`, `Deployment`, `Service` (ClusterIP).
-  - `PersistentVolumeClaim` (RWO).
-  - `ConfigMap` e `Secret`.
-  - `HorizontalPodAutoscaler` (HPA) integrado com o `metrics-server`.
-  - `Probes` (Liveness e Readiness) e `Resources` (Requests/Limits).
-
----
-
-## Estrutura de Diretórios
-
-Os manifestos estão organizados de forma sequencial na pasta `evidencias/` e `k8s/`:
-
-```text
-├── evidencias
-│   ├── images
-│     ├── nivel1
-│     ├── nivel2
-│     ├── nivel3
-│     ├── nivel4
-│     ├── nivel5
-│     ├── nivel6
-│     └── nivel7
-└── Evidencias.md
-├── k8s/
-│   ├── 00-namespace.yml
-│   ├── 01-pod-teste.yaml
-│   ├── 02-postgres-pv.yaml
-│   ├── 02-postgres-pvc.yaml
-│   ├── 03-postgres-service.yaml
-│   ├── 04-postgres-deployment.yaml
-│   ├── 05-postgres-config.yaml
-│   ├── 06-postgrest-secret.yaml
-│   ├── 07-app-deployment.yaml
-│   ├── 07-postgrest-deployment.yaml
-│   └── 08-postgrest-hpa.yaml
-└── README.md
+```bash
+kubectl get nodes
+kubectl get storageclass
+kubectl top nodes
 ```
 
----
+## Instalação reproduzível
 
-## Como Executar o Projeto
+O Secret real nao fica no Git. Gere-o no cluster usando uma senha local:
 
-### Pré-requisitos
-- Um cluster Kubernetes ativo (ex: K3s, Minikube ou Kind).
-- `kubectl` instalado e configurado.
-- `metrics-server` ativado no cluster (necessário para o HPA).
-
-### Passo a Passo
-
-**1. Clonar o repositório:**
 ```bash
-git clone [https://github.com/DiegoQueiroz01/Desafio_II_Fund_Kubernetes.git](https://github.com/DiegoQueiroz01/Desafio_II_Fund_Kubernetes.git)
-cd NOME-DO-REPOSITORIO
-```
-
-**2. Criar o Namespace:**
-Antes de aplicar os restantes recursos, crie o namespace isolado do projeto:
-```bash
-kubectl apply -f k8s/01-namespace.yaml
-```
-
-**3. Configurar as Credenciais Seguras (Secret):**
-Para evitar *hardcoding* de palavras-passe no repositório, crie o `Secret` diretamente no cluster:
-```bash
+export POSTGRES_PASSWORD='troque-por-uma-senha-local'
+kubectl apply -f k8s/00-namespace.yml
 kubectl create secret generic postgres-secret \
-  --from-literal=uri='postgres://appuser:password@postgres-service:5432/appdb' \
-  -n segundodesafio
+  --namespace segundodesafio \
+  --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  --from-literal=uri="postgres://appuser:${POSTGRES_PASSWORD}@postgres-service:5432/appdb"
 ```
 
-**4. Aplicar o resto da infraestrutura:**
+Aplique os recursos principais. O comando nao inclui o arquivo de exemplo do
+Secret, que fica fora de `k8s/` justamente para nao substituir o Secret real.
+
 ```bash
-kubectl apply -f k8s/
+kubectl apply -f k8s/02-postgres-pvc.yaml
+kubectl apply -f k8s/03-postgres-service.yaml
+kubectl apply -f k8s/05-postgres-config.yaml
+kubectl apply -f k8s/06-postgres-init-config.yaml
+kubectl apply -f k8s/04-postgres-deployment.yaml
+kubectl apply -f k8s/07-postgrest-deployment.yaml
+kubectl apply -f k8s/08-postgrest-hpa.yaml
+kubectl rollout status deployment/postgres -n segundodesafio
+kubectl rollout status deployment/postgrest -n segundodesafio
 ```
 
-**5. Verificar o estado dos recursos:**
+O script SQL em `06-postgres-init-config.yaml` cria a tabela `tarefas` apenas
+na inicializacao de um banco novo. Em um PVC ja existente, ele nao e executado
+novamente, conforme o comportamento da imagem oficial do PostgreSQL.
+
+## Verificação
+
 ```bash
-kubectl get all -n segundodesafio
+kubectl get all,pvc -n segundodesafio
+kubectl get hpa -n segundodesafio
 ```
 
----
+Em outro terminal, exponha a API localmente:
 
-## Como Testar as Funcionalidades
-
-### 1. Acesso à API a partir do exterior do cluster
-Como o Service é do tipo `ClusterIP`, utilize o `port-forward` para expor a API localmente:
 ```bash
 kubectl port-forward svc/postgrest-service 3000:3000 -n segundodesafio
 ```
-Aceda no navegador ou via cURL: `http://localhost:3000/`
 
-### 2. Teste de Persistência (PVC)
-1. Insira um dado na base de dados através da API.
-2. Elimine o Pod do PostgreSQL simulando uma falha:
-   ```bash
-   kubectl delete pod -l app=postgres -n segundodesafio
-   ```
-3. Aguarde que o Kubernetes recrie o Pod.
-4. Faça um novo pedido à API e confirme que os dados continuam intactos.
+Em um terceiro terminal, teste leitura e escrita:
 
-### 3. Teste de Auto-Scaling (HPA)
-Gere um pico de pedidos utilizando um Pod temporário com o `busybox` para colocar a CPU da API sob stress:
 ```bash
-kubectl run load-gen --image=busybox -n segundodesafio -- /bin/sh -c "while true; do wget -q -O- http://postgrest-service:3000/ > /dev/null; done"
+curl http://127.0.0.1:3000/tarefas
+curl -X POST http://127.0.0.1:3000/tarefas \
+  -H 'Content-Type: application/json' \
+  -H 'Prefer: return=representation' \
+  --data '{"titulo":"dado persistente","concluido":false}'
 ```
 
-Acompanhe o escalamento das réplicas em tempo real:
+## Teste de persistencia
+
+Anote o resultado do POST, remova o Pod do banco e aguarde a recriacao:
+
 ```bash
+kubectl delete pod -l app=postgres -n segundodesafio
+kubectl wait --for=condition=ready pod -l app=postgres \
+  -n segundodesafio --timeout=180s
+curl http://127.0.0.1:3000/tarefas
+```
+
+O registro criado antes da remocao deve continuar disponivel. O Deployment
+recria o Pod e o PVC remonta os dados persistidos.
+
+## Teste do HPA
+
+Gere carga dentro do cluster:
+
+```bash
+kubectl run load-gen --image=busybox:1.36 -n segundodesafio --restart=Never \
+  -- /bin/sh -c 'while true; do wget -q -O- http://postgrest-service:3000/tarefas >/dev/null; done'
 kubectl get hpa postgrest-hpa -n segundodesafio -w
 ```
-*(Verá o HPA escalar as réplicas automaticamente de 1 até 5, conforme o uso da CPU ultrapassa a meta de 50%).*
 
-Para interromper o teste e observar o *scale-down*:
+Finalize o gerador quando terminar:
+
 ```bash
 kubectl delete pod load-gen -n segundodesafio
 ```
 
----
+## Pod de teste opcional
 
-## Conclusão e Aprendizagens
-Este projeto consolidou conceitos avançados de orquestração de contentores, incluindo:
-- Desacoplamento de configurações e segurança de credenciais.
-- Gestão de estado em aplicações K8s (Stateful vs Stateless).
-- Estratégias de auto-recuperação (Self-healing com Probes).
-- Gestão de capacidade elástica baseada no consumo real de recursos (HPA).
+O arquivo `k8s/01-pod-teste.yaml` existe para o Nivel 1 do desafio e nao faz
+parte da instalacao principal. Para usa-lo:
+
+```bash
+kubectl apply -f k8s/01-pod-teste.yaml
+kubectl describe pod nginx-avulso -n segundodesafio
+kubectl logs nginx-avulso -n segundodesafio
+kubectl delete pod nginx-avulso -n segundodesafio
+```
+
+## Migração de uma instalação antiga
+
+Versoes anteriores usavam um PV estatico com `hostPath` e um PVC com
+`storageClassName: ""`. Como `storageClassName` e imutavel em PVC vinculado,
+uma instalacao antiga precisa ser recriada para usar a StorageClass padrao.
+Faca backup antes:
+
+```bash
+kubectl exec -n segundodesafio deployment/postgres -- \
+  pg_dump -U appuser -d appdb > backup.sql
+```
+
+Depois, em um ambiente de laboratorio, remova o namespace antigo e execute a
+instalacao reproduzivel novamente. Restaure o backup se necessario:
+
+```bash
+kubectl delete namespace segundodesafio
+kubectl delete pv postgres-pv --ignore-not-found
+```
+
+O template de Secret esta em
+`examples/postgres-secret.example.yaml`; ele documenta o formato, mas nao deve
+ser aplicado com `CHANGE_ME` em um ambiente real.
+
+## Evidencias
+
+As capturas do desafio estao em [evidencias/Evidencias.md](evidencias/Evidencias.md),
+organizadas por nivel.
+
+## Limpeza
+
+```bash
+kubectl delete namespace segundodesafio
+```
